@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>수수료 정책 중복 적용 계산기</title>
+
+<style>
+body {
+  margin:0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background:#f5f6f8;
+  color:#222;
+}
+.container {
+  max-width:1200px;
+  margin:30px auto 60px;
+  padding:0 20px;
+}
+h1 {
+  text-align:center;
+  margin-bottom:6px;
+}
+.subtitle {
+  text-align:center;
+  color:#666;
+  margin-bottom:30px;
+  font-size:14px;
+}
+
+.card {
+  background:#fff;
+  border-radius:10px;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+  padding:20px;
+  margin-bottom:20px;
+}
+
+.input-row {
+  display:flex;
+  gap:20px;
+  align-items:flex-end;
+}
+.input-group {
+  flex:1;
+}
+label {
+  font-size:13px;
+  font-weight:600;
+}
+input {
+  width:100%;
+  margin-top:6px;
+  padding:10px;
+  font-size:15px;
+  border:1px solid #ddd;
+  border-radius:6px;
+}
+button {
+  padding:11px 24px;
+  background:#3b6cff;
+  color:#fff;
+  border:none;
+  border-radius:6px;
+  font-weight:600;
+  cursor:pointer;
+}
+
+.grid {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:20px;
+}
+@media(max-width:1000px){
+  .grid{grid-template-columns:1fr;}
+}
+
+.card-title {
+  font-weight:700;
+  font-size:16px;
+  margin-bottom:6px;
+}
+.card-desc {
+  font-size:13px;
+  color:#666;
+  margin-bottom:12px;
+}
+
+table {
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+}
+th, td {
+  padding:8px;
+  border-bottom:1px solid #e6e6e6;
+  text-align:right;
+}
+th:first-child, td:first-child { text-align:left; }
+th {
+  background:#f7f8fa;
+  font-weight:600;
+}
+
+.highlight {
+  background:#fff6bf;
+}
+
+.summary {
+  background:#eef4ff;
+  border-radius:8px;
+  padding:12px;
+  margin-top:12px;
+  font-size:13px;
+}
+.summary div {
+  display:flex;
+  justify-content:space-between;
+  margin-bottom:6px;
+}
+.summary div:last-child {
+  margin-top:8px;
+  padding-top:8px;
+  border-top:1px solid #c6d8ff;
+  font-weight:700;
+}
+
+.compare {
+  background:#fff3cd;
+  border-left:5px solid #ffc107;
+  border-radius:8px;
+  padding:16px;
+  font-size:14px;
+}
+.compare div {
+  display:flex;
+  justify-content:space-between;
+  margin-bottom:6px;
+}
+.compare div:last-child {
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px solid #e0c36a;
+  font-weight:700;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>수수료 정책 중복 적용 계산기</h1>
+<p class="subtitle">구간별 수수료 할인 + 누적 거래액 기반 수수료 인하 중복 적용 시뮬레이션</p>
+
+<div class="card">
+  <div class="input-row">
+    <div class="input-group">
+      <label>기본 수수료율 (%)</label>
+      <input id="baseRate" type="number" value="4" step="0.1">
+    </div>
+    <div class="input-group">
+      <label>해당 월 결제금액 (원)</label>
+      <input id="amount" type="number" value="400000000">
+    </div>
+    <button onclick="calc()">계산하기</button>
+  </div>
+</div>
+
+<div class="grid">
+
+<div class="card">
+  <div class="card-title">방안 1: 할인율 누적 적용</div>
+  <div class="card-desc">인하된 기본 수수료율을 기준으로 모든 구간에 할인율을 적용</div>
+  <table>
+    <thead>
+      <tr>
+        <th>구간</th><th>대상금액</th><th>할인율</th><th>적용율</th><th>수수료</th>
+      </tr>
+    </thead>
+    <tbody id="t1"></tbody>
+  </table>
+  <div class="summary" id="s1"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">방안 2: 구간 기준 상향</div>
+  <div class="card-desc">5% 기준 할인 고정 + 역전 방지 (기본 수수료가 더 낮으면 기본 적용)</div>
+  <table>
+    <thead>
+      <tr>
+        <th>구간</th><th>대상금액</th><th>할인율</th><th>적용율</th><th>수수료</th>
+      </tr>
+    </thead>
+    <tbody id="t2"></tbody>
+  </table>
+  <div class="summary" id="s2"></div>
+</div>
+
+</div>
+
+<div class="compare" id="compare"></div>
+
+</div>
+
+<script>
+const tiers = [
+ {n:"3천만원 미만", min:0, max:30000000, d:0},
+ {n:"3천~5천", min:30000000, max:50000000, d:.1},
+ {n:"5천~1억", min:50000000, max:100000000, d:.2},
+ {n:"1억~3억", min:100000000, max:300000000, d:.3},
+ {n:"3억 초과", min:300000000, max:Infinity, d:.5},
+];
+
+const won = n => "₩"+Math.round(n).toLocaleString();
+
+function part(total,t){
+  if(total<=t.min) return 0;
+  return Math.min(total,t.max)-t.min;
+}
+
+function calc(){
+  const base = +baseRate.value/100;
+  const total = +amount.value;
+
+  let h1="",h2="",sum1=0,sum2=0;
+
+  tiers.forEach(t=>{
+    const a = part(total,t);
+    if(!a) return;
+
+    const r1 = base*(1-t.d);
+    const f1 = a*r1;
+    sum1+=f1;
+    h1+=`<tr>
+      <td>${t.n}</td><td>${won(a)}</td><td>${t.d*100}%</td>
+      <td>${(r1*100).toFixed(1)}%</td><td>${won(f1)}</td>
+    </tr>`;
+
+    const policy = 0.05*(1-t.d);
+    const r2 = Math.min(base,policy);
+    const f2 = a*r2;
+    sum2+=f2;
+    h2+=`<tr class="${r2<base?'highlight':''}">
+      <td>${t.n}</td><td>${won(a)}</td><td>${t.d*100}%</td>
+      <td>${(r2*100).toFixed(1)}%</td><td>${won(f2)}</td>
+    </tr>`;
+  });
+
+  t1.innerHTML=h1;
+  t2.innerHTML=h2;
+
+  s1.innerHTML = `
+    <div><span>총 수수료 (부가세 제외)</span><span>${won(sum1)}</span></div>
+    <div><span>부가세 (10%)</span><span>${won(sum1*0.1)}</span></div>
+    <div><span>최종 수수료</span><span>${won(sum1*1.1)}</span></div>
+  `;
+
+  s2.innerHTML = `
+    <div><span>총 수수료 (부가세 제외)</span><span>${won(sum2)}</span></div>
+    <div><span>부가세 (10%)</span><span>${won(sum2*0.1)}</span></div>
+    <div><span>최종 수수료</span><span>${won(sum2*1.1)}</span></div>
+  `;
+
+  const origin = total*0.05*1.1;
+  compare.innerHTML = `
+    <div><span>방안 1 절감액 (기본 5%)</span><span>${won(origin-sum1*1.1)}</span></div>
+    <div><span>방안 2 절감액 (기본 5%)</span><span>${won(origin-sum2*1.1)}</span></div>
+    <div><span>차액 (방안1 - 방안2)</span><span>${won(sum2*1.1-sum1*1.1)}</span></div>
+  `;
+}
+calc();
+</script>
+</body>
+</html>
